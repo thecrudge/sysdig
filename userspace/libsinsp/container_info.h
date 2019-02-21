@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <list>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,8 @@ enum sinsp_container_type
 	CT_CRI = 6,
 	CT_CONTAINERD = 7,
 };
+
+class sinsp_threadinfo;
 
 // Docker and CRI-compatible runtimes are very similar
 static inline bool is_docker_compatible(sinsp_container_type t)
@@ -122,6 +125,58 @@ public:
 		std::string m_propagation;
 	};
 
+	class container_health_probe
+	{
+	public:
+
+		// The type of health probe
+		enum probe_type {
+			PT_NONE = 0,
+			PT_HEALTHCHECK,
+			PT_LIVENESS_PROBE,
+			PT_READINESS_PROBE
+		};
+
+		container_health_probe();
+		container_health_probe(const container_health_probe &other);
+		container_health_probe(container_health_probe &&other);
+		virtual ~container_health_probe();
+
+		container_health_probe &operator=(const container_health_probe &other);
+
+		// Attempt to parse any health probes out of the
+		// provided config obj and add them to the provided
+		// list.
+		static void add_health_probes(const Json::Value &config_obj,
+					      std::list<container_health_probe> &probes);
+
+		void add_to_json(Json::Value &container_obj) const;
+
+		// The probe_type that should be used for commands
+		// matching this health probe.
+		probe_type m_probe_type;
+
+		// The actual health probe exe and args.
+		std::string m_health_probe_exe;
+		std::vector<std::string> m_health_probe_args;
+
+	protected:
+		// The part of the container configuration that should
+		// be saved in the CONTAINER_JSON event for this
+		// health probe.
+		Json::Value m_obj;
+
+		static bool get_k8s_pod_spec(const Json::Value &config_obj, Json::Value &spec);
+
+		// Parse the health probe executable/arguments out of
+		// the provided object. Returns true if a probe check
+		// could be parsed successfully, false otherwise.
+		bool parse_healthcheck(const Json::Value &healthcheck_obj);
+		bool parse_liveness_readiness_probe(const Json::Value &probe_obj, probe_type ptype);
+
+		std::string normalize_arg(const std::string &arg);
+	};
+
 	sinsp_container_info():
 		m_container_ip(0),
 		m_privileged(false),
@@ -130,17 +185,12 @@ public:
 		m_cpu_shares(1024),
 		m_cpu_quota(0),
 		m_cpu_period(100000),
-		m_has_healthcheck(false),
-		m_healthcheck_exe(""),
 		m_is_pod_sandbox(false)
 #ifdef HAS_ANALYZER
 		,m_metadata_deadline(0)
 #endif
 	{
 	}
-
-	std::string normalize_healthcheck_arg(const std::string &arg);
-	void parse_healthcheck(const Json::Value &config_obj);
 
 	const std::vector<std::string>& get_env() const { return m_env; }
 
@@ -151,6 +201,9 @@ public:
 	bool is_pod_sandbox() const {
 		return m_is_pod_sandbox;
 	}
+
+	// Match a process against the set of health probes
+	container_health_probe::probe_type match_health_probe(sinsp_threadinfo *tinfo);
 
 	std::string m_id;
 	sinsp_container_type m_type;
@@ -172,10 +225,8 @@ public:
 	int64_t m_cpu_shares;
 	int64_t m_cpu_quota;
 	int64_t m_cpu_period;
-	Json::Value m_healthcheck_obj;
-	bool m_has_healthcheck;
-	std::string m_healthcheck_exe;
-	std::vector<std::string> m_healthcheck_args;
+	std::list<container_health_probe> m_health_probes;
+
 	bool m_is_pod_sandbox;
 #ifdef HAS_ANALYZER
 	std::string m_sysdig_agent_conf;

@@ -87,19 +87,17 @@ bool docker::parse_docker(sinsp_container_manager* manager, sinsp_container_info
 		container->m_imageid = imgstr.substr(cpos + 1);
 	}
 
-	container->parse_healthcheck(config_obj["Healthcheck"]);
-
-	// Saving full healthcheck for container event parsing/writing
-	container->m_healthcheck_obj = config_obj["Healthcheck"];
+	// Add any health checks described in the container config/labels.
+	sinsp_container_info::container_health_probe::add_health_probes(config_obj, container->m_health_probes);
 
 	// containers can be spawned using just the imageID as image name,
 	// with or without the hash prefix (e.g. sha256:)
 	bool no_name = !container->m_imageid.empty() &&
-		       strncmp(container->m_image.c_str(), container->m_imageid.c_str(),
-			       MIN(container->m_image.length(), container->m_imageid.length())) == 0;
+		strncmp(container->m_image.c_str(), container->m_imageid.c_str(),
+			MIN(container->m_image.length(), container->m_imageid.length())) == 0;
 	no_name |= !imgstr.empty() &&
-		   strncmp(container->m_image.c_str(), imgstr.c_str(),
-			   MIN(container->m_image.length(), imgstr.length())) == 0;
+		strncmp(container->m_image.c_str(), imgstr.c_str(),
+			MIN(container->m_image.length(), imgstr.length())) == 0;
 
 	if(!no_name || !m_query_image_info)
 	{
@@ -288,3 +286,4 @@ bool docker::parse_docker(sinsp_container_manager* manager, sinsp_container_info
 #endif
 	return true;
 }
+

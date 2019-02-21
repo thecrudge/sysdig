@@ -265,8 +265,16 @@ public:
 	int32_t m_tty;
 	int32_t m_loginuid; ///< loginuid (auid)
 
-	// If true, this thread is part of a container health check
-	bool m_is_container_healthcheck;
+	// In some cases, a threadinfo has a category that identfies
+	// why it was run.
+	enum command_category {
+		CAT_NONE = 0,
+		CAT_HEALTHCHECK,
+		CAT_LIVENESS_PROBE,
+		CAT_READINESS_PROBE
+	};
+
+	command_category m_category;
 
 	//
 	// State for multi-event processing

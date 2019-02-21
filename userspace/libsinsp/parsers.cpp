@@ -2261,7 +2261,7 @@ inline void sinsp_parser::add_socket(sinsp_evt *evt, int64_t fd, uint32_t domain
  *
  * Preconditions: evt->m_fdinfo == nullptr and
  *                evt->m_tinfo != nullptr
- * 
+ *
  */
 inline void sinsp_parser::infer_sendto_fdinfo(sinsp_evt* const evt)
 {
@@ -4533,7 +4533,9 @@ void sinsp_parser::parse_container_json_evt(sinsp_evt *evt)
 
 		libsinsp::container_engine::docker::parse_json_mounts(container["Mounts"], container_info.m_mounts);
 
-		container_info.parse_healthcheck(container["Healthcheck"]);
+		// Add any health checks described in the container config/labels.
+		sinsp_container_info::container_health_probe::add_health_probes(container, container_info.m_health_probes);
+
 		const Json::Value& contip = container["ip"];
 		if(!contip.isNull() && contip.isConvertibleTo(Json::stringValue))
 		{
