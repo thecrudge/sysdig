@@ -23,7 +23,6 @@ limitations under the License.
 #include <stdint.h>
 
 class sinsp_container_manager;
-class sinsp_container_info;
 class sinsp_threadinfo;
 
 namespace libsinsp {
