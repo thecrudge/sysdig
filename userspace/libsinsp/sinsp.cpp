@@ -42,6 +42,7 @@ limitations under the License.
 #include "k8s_api_handler.h"
 #ifdef HAS_CAPTURE
 #include <curl/curl.h>
+#include <mntent.h>
 #endif
 #endif
 
@@ -2511,3 +2512,53 @@ bool sinsp_thread_manager::remove_inactive_threads()
 
 	return res;
 }
+
+#ifdef HAS_CAPTURE
+std::shared_ptr<std::string> sinsp::lookup_cgroup_dir(const string& subsys)
+{
+	shared_ptr<string> cgroup_dir;
+	static std::unordered_map<std::string, std::shared_ptr<std::string>> cgroup_dir_cache;
+
+	const auto& it = cgroup_dir_cache.find(subsys);
+	if(it != cgroup_dir_cache.end())
+	{
+		return it->second;
+	}
+
+	// Look for mount point of cgroup filesystem
+	// It should be already mounted on the host or by
+	// our docker-entrypoint.sh script
+	if(strcmp(scap_get_host_root(), "") != 0)
+	{
+		// We are inside our container, so we should use the directory
+		// mounted by it
+		auto cgroup = string(scap_get_host_root()) + "/cgroup/" + subsys;
+		cgroup_dir = make_shared<std::string>(cgroup);
+	}
+	else
+	{
+		FILE* fp = setmntent("/proc/mounts", "r");
+		struct mntent* entry = getmntent(fp);
+		while(entry != nullptr)
+		{
+			if(strcmp(entry->mnt_type, "cgroup") == 0 &&
+			   hasmntopt(entry, subsys.c_str()) != NULL)
+			{
+				cgroup_dir = make_shared<std::string>(entry->mnt_dir);
+				break;
+			}
+			entry = getmntent(fp);
+		}
+		endmntent(fp);
+	}
+	if(!cgroup_dir)
+	{
+		return make_shared<std::string>();
+	}
+	else
+	{
+		cgroup_dir_cache[subsys] = cgroup_dir;
+		return cgroup_dir;
+	}
+}
+#endif

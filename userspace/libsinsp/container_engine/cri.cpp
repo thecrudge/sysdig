@@ -68,6 +68,33 @@ bool parse_containerd(const runtime::v1alpha2::ContainerStatusResponse& status, 
 	return true;
 }
 
+// to prevent 32-bit number of kilobytes from overflowing, ignore values larger than 4 TiB.
+// This reports extremely large values (e.g. almost-but-not-quite 9EiB as set by k8s) as unlimited.
+// Note: we use the same maximum value for cpu shares/quotas as well; the typical values are much lower
+// and so should never exceed CGROUP_VAL_MAX either
+constexpr const int64_t CGROUP_VAL_MAX = 1L << 42;
+
+bool read_cgroup_val(std::shared_ptr<std::string>& subsys, const std::string& cgroup, const std::string& filename, int64_t& out)
+{
+	if(cgroup == "/")
+	{
+		return false;
+	}
+
+	std::string path = *subsys.get() + "/" + cgroup + "/" + filename;
+	ifstream cg_val(path);
+
+	int64_t val;
+	cg_val >> val;
+
+	if(val > 0 && val < CGROUP_VAL_MAX)
+	{
+		out = val;
+		return true;
+	}
+	return false;
+}
+
 bool parse_cri(sinsp_container_manager *manager, sinsp_container_info *container, sinsp_threadinfo *tinfo)
 {
 	if(!s_cri)
@@ -116,6 +143,16 @@ bool parse_cri(sinsp_container_manager *manager, sinsp_container_info *container
 	{
 		return true;
 	}
+
+	std::shared_ptr<std::string> memcg_root = sinsp::lookup_cgroup_dir("memory");
+	const std::string& memcg = tinfo->get_cgroup("memory");
+	read_cgroup_val(memcg_root, memcg, "memory.limit_in_bytes", container->m_memory_limit);
+
+	std::shared_ptr<std::string> cpucg_root = sinsp::lookup_cgroup_dir("cpu");
+	const std::string& cpucg = tinfo->get_cgroup("cpu");
+	read_cgroup_val(cpucg_root, cpucg, "cpu.shares", container->m_cpu_shares);
+	read_cgroup_val(cpucg_root, cpucg, "cpu.cfs_quota_us", container->m_cpu_quota);
+	read_cgroup_val(cpucg_root, cpucg, "cpu.cfs_period_us", container->m_cpu_period);
 
 	if(s_cri_extra_queries)
 	{
